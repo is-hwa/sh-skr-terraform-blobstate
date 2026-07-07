@@ -5,7 +5,12 @@ terraform {
       version = "4.74.0"
     }
   }
-  backend "local" {}
+
+  backend "azurerm" {
+    resource_group_name  = "tfstate-poc-sh"
+    storage_account_name = "sttfpocsh01"
+    container_name       = "tfstate"
+  }
 }
 
 provider "azurerm" {
