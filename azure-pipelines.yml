@@ -41,17 +41,17 @@ stages:
                 az group show -n TEST-AKS-RG -o none 2>/dev/null || \
                   az group create -n TEST-AKS-RG -l koreacentral -o none
 
-                az storage account show -n shteststate -g TEST-AKS-RG -o none 2>/dev/null || \
-                  az storage account create -n shteststate -g TEST-AKS-RG \
+                az storage account show -n shtesttfstate -g TEST-AKS-RG -o none 2>/dev/null || \
+                  az storage account create -n shtesttfstate -g TEST-AKS-RG \
                     --sku Standard_LRS --encryption-services blob -o none
 
                 ACCOUNT_KEY=$(az storage account keys list \
-                  --account-name shteststate --resource-group TEST-AKS-RG \
+                  --account-name shtesttfstate --resource-group TEST-AKS-RG \
                   --query '[0].value' -o tsv)
 
-                az storage container show -n tfstate --account-name shteststate \
+                az storage container show -n tfstate --account-name shtesttfstate \
                   --account-key $ACCOUNT_KEY -o none 2>/dev/null || \
-                  az storage container create -n tfstate --account-name shteststate \
+                  az storage container create -n tfstate --account-name shtesttfstate \
                     --account-key $ACCOUNT_KEY -o none
 
   - stage: Prepare
