@@ -25,6 +25,35 @@ variables:
     value: 'records.auto.tfvars.json'
 
 stages:
+  - stage: Bootstrap
+    displayName: 'State 저장소 준비 (idempotent)'
+    jobs:
+      - job: EnsureStateStorage
+        steps:
+          - checkout: none
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'sh2-service-connection'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                az group show -n TEST-AKS-RG -o none 2>/dev/null || \
+                  az group create -n TEST-AKS-RG -l koreacentral -o none
+
+                az storage account show -n shteststate -g TEST-AKS-RG -o none 2>/dev/null || \
+                  az storage account create -n shteststate -g TEST-AKS-RG \
+                    --sku Standard_LRS --encryption-services blob -o none
+
+                ACCOUNT_KEY=$(az storage account keys list \
+                  --account-name shteststate --resource-group TEST-AKS-RG \
+                  --query '[0].value' -o tsv)
+
+                az storage container show -n tfstate --account-name shteststate \
+                  --account-key $ACCOUNT_KEY -o none 2>/dev/null || \
+                  az storage container create -n tfstate --account-name shteststate \
+                    --account-key $ACCOUNT_KEY -o none
+
   - stage: Prepare
     jobs:
       - job: MergeVariables
@@ -76,7 +105,7 @@ stages:
               mv merged.json $(VAR_FILE)
               
               cat > backend.hcl <<EOF
-              path = "$(STATE_DIR)/terraform.tfstate"
+              key = "${{ parameters.ENV }}/${{ parameters.PROJECT }}/$(STACK)/terraform.tfstate"
               EOF
               } 2>error.log
             displayName: 'Prepare TFVars'
@@ -94,6 +123,9 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 set -e
+                export ARM_ACCESS_KEY=$(az storage account keys list \
+                  --account-name shtesttfstate --resource-group TEST-AKS-RG \
+                  --query '[0].value' -o tsv)
                 cd $(WORK_DIR)
                 # 💡 에러가 나면 자동으로 여기서 파이프라인이 멈추고 error.log가 보존됩니다.
                 terraform init -backend-config="backend.hcl" 2>error.log
@@ -112,6 +144,9 @@ stages:
               scriptLocation: 'inlineScript'
               inlineScript: |
                 set -e
+                export ARM_ACCESS_KEY=$(az storage account keys list \
+                  --account-name shtesttfstate --resource-group TEST-AKS-RG \
+                  --query '[0].value' -o tsv)
                 cd $(WORK_DIR)
                 terraform plan -var-file=$(VAR_FILE) -out=tfplan 2>error.log
                 terraform show -json tfplan > tfplan.json
@@ -163,6 +198,9 @@ stages:
                     scriptLocation: 'inlineScript'
                     inlineScript: |
                       set -e
+                      export ARM_ACCESS_KEY=$(az storage account keys list \
+                        --account-name shtesttfstate --resource-group TEST-AKS-RG \
+                        --query '[0].value' -o tsv)
                       cd $(WORK_DIR)
                       terraform apply -auto-approve tfplan 2>error.log
                       cp $(VAR_FILE) $(STATE_DIR)/$(VAR_FILE)
